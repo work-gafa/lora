@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>出行必备物品清单</title>
+<style>
+  :root { --bg:#fff7ef; --card:#ffffff; --ink:#3a3a3a; --muted:#bdbdbd; --accent:#ff8a5b; }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+         max-width: 480px; margin: 24px auto; padding: 0 16px; background: var(--bg); color: var(--ink); }
+  h2 { font-size: 20px; margin: 0 0 4px; }
+  .sub { font-size: 13px; color: #999; margin-bottom: 16px; }
+  .item { padding: 12px 14px; margin: 8px 0; border-radius: 14px; background: var(--card);
+          font-size: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.06); transition: .2s; }
+  .item .loc { font-size: 12px; color: #999; margin-left: 8px; }
+  /* 已带：横线划掉 + 颜色变浅 */
+  .item.present { text-decoration: line-through; color: var(--muted); background: #fafafa; }
+  .badge { float: right; font-size: 12px; padding: 2px 8px; border-radius: 999px; }
+  .ok { background: #e7f7ec; color: #2e9e5b; }
+  .miss { background: #fdeaea; color: #d9534f; }
+</style>
+</head>
+<body>
+  <h2>出行必备物品清单</h2>
+  <div class="sub">已带 → 横线划掉并变浅；未带 → 保持原样</div>
+  <div id="list"></div>
+
+  <script>
+  // 这是「前端渲染原型」。真实运行时：
+  // 1) 用户拍照/传图 → 调 infer.py（或后端接口）
+  // 2) 拿到 { scenario, items:[{name,present,location}] }
+  // 3) 把 items 传给 render() 即可
+  const sample = {
+    scenario: "travel",
+    items: [
+      { name: "身份证",  present: true,  location: "左侧内袋" },
+      { name: "充电宝",  present: false, location: null },
+      { name: "护肤品",  present: true,  location: "化妆包" },
+      { name: "雨伞",    present: false, location: null },
+      { name: "转换插头", present: true,  location: "充电宝旁" }
+    ]
+  };
+
+  function render(data) {
+    const el = document.getElementById("list");
+    el.innerHTML = "";
+    data.items.forEach(it => {
+      const d = document.createElement("div");
+      d.className = "item" + (it.present ? " present" : "");
+      d.innerHTML = it.name
+        + (it.present && it.location ? `<span class="loc">📍 ${it.location}</span>` : "")
+        + `<span class="badge ${it.present ? "ok" : "miss"}">${it.present ? "已带" : "未带"}</span>`;
+      el.appendChild(d);
+    });
+  }
+  render(sample);
+  </script>
+</body>
+</html>

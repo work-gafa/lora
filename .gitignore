@@ -1,0 +1,38 @@
+# ===== 大体积模型权重：每人各自下载，不入库 =====
+vlm/
+output/
+*.safetensors
+*.bin
+*.gguf
+
+# ===== 原始照片与标注中间产物：隐私 + 体积，不入库 =====
+# 注意：data/archive/ 下的归档是刻意保留、要共享的，不要加进来
+data/raw/
+data/labeled/*.jsonl
+data/labeled/_backup/
+data/labeled/uploads/
+data/labeled/detections.json
+# overlays 已复制进 data/archive/<版本>/overlays/，这里排除避免重复占 6MB
+data/labeled/overlays/
+
+# ===== 运行日志（本地调试用）=====
+*.log
+anno_tool.log
+
+# ===== 脚本备份（改脚本时的临时副本）=====
+*.bak
+
+# ===== Python 缓存 =====
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# ===== 临时 / 弃用文件 =====
+_trash/
+
+# ===== 项目记忆（本地用，不共享）=====
+.workbuddy/
+
+# ===== 系统 =====
+.DS_Store
+Thumbs.db

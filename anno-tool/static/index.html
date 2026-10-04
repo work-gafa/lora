@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>行李标注 · AI预标 + 手动画框工具</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; font-family: "Microsoft YaHei", "PingFang SC", sans-serif; }
+  body { display: flex; flex-direction: column; background: #f5f6f8; color: #222; }
+  header {
+    display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+    background: #2b3a55; color: #fff; flex-wrap: wrap;
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  header .spacer { flex: 1; }
+  header button {
+    background: #4f7cff; color: #fff; border: 0; padding: 7px 14px;
+    border-radius: 6px; cursor: pointer; font-size: 13px;
+  }
+  header button.ghost { background: #445; }
+  header button.primary { background: #2e9e5b; }
+  header button:hover { filter: brightness(1.08); }
+  header button:disabled { opacity: .55; cursor: default; }
+  #toast {
+    position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
+    background: #2e7d32; color: #fff; padding: 8px 16px; border-radius: 6px;
+    font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .25s; z-index: 50;
+  }
+  #toast.show { opacity: 1; }
+  main { flex: 1; display: flex; min-height: 0; }
+  .left {
+    width: 200px; background: #fff; border-right: 1px solid #e3e6ea;
+    overflow-y: auto; padding: 8px;
+  }
+  .left .title { font-size: 12px; color: #888; margin: 4px 6px 8px; }
+  .thumb {
+    display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 6px;
+    cursor: pointer; font-size: 13px; margin-bottom: 2px;
+  }
+  .thumb:hover { background: #eef2ff; }
+  .thumb.active { background: #dde6ff; font-weight: 600; }
+  .thumb .src {
+    font-size: 10px; color: #2e9e5b; border: 1px solid #2e9e5b; border-radius: 8px;
+    padding: 0 5px; margin-right: 2px;
+  }
+  .thumb .cnt {
+    margin-left: auto; background: #4f7cff; color: #fff; font-size: 11px;
+    border-radius: 10px; padding: 1px 7px; min-width: 20px; text-align: center;
+  }
+  .center { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .canvas-wrap { flex: 1; overflow: auto; padding: 14px; display: flex; justify-content: center; }
+  canvas { background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.12); cursor: crosshair; }
+  .hint { text-align: center; color: #888; font-size: 12px; padding: 6px; }
+  .right {
+    width: 260px; background: #fff; border-left: 1px solid #e3e6ea;
+    overflow-y: auto; padding: 10px;
+  }
+  .right .title { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+  .item {
+    display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px;
+    margin-bottom: 4px; font-size: 13px; cursor: pointer; border: 1px solid transparent;
+  }
+  .item:hover { background: #f4f6fb; }
+  .item.sel { border-color: #4f7cff; background: #eef2ff; }
+  .sw { width: 14px; height: 14px; border-radius: 3px; flex: none; border: 1px solid rgba(0,0,0,.15); }
+  .item .nm { flex: 1; }
+  .item .del { color: #c33; cursor: pointer; font-weight: 700; padding: 0 4px; }
+  .item .ren { color: #4f7cff; cursor: pointer; font-size: 12px; }
+  .empty { color: #aaa; font-size: 12px; padding: 8px; }
+  /* LoRA 识别面板 */
+  .lora-sum {
+    font-size: 12px; color: #666; padding: 6px 8px; margin-bottom: 6px;
+    background: #f6f7f9; border-radius: 6px; position: sticky; top: 0;
+  }
+  #loraBox .item { cursor: default; }
+  #loraBox .item .ren { color: #888; cursor: default; }
+  #loraBox .item.lora-unknown { opacity: .72; }
+  #loraBox .item.lora-unknown .nm { color: #999; }
+  #modal {
+    position: fixed; inset: 0; background: rgba(0,0,0,.35); display: none;
+    align-items: center; justify-content: center; z-index: 60;
+  }
+  #modal.show { display: flex; }
+  .card {
+    background: #fff; padding: 18px 20px; border-radius: 10px; width: 320px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.25);
+  }
+  .card h3 { margin: 0 0 12px; font-size: 15px; }
+  .card label { font-size: 12px; color: #666; display: block; margin: 10px 0 4px; }
+  .card select, .card input {
+    width: 100%; padding: 8px; border: 1px solid #ccd; border-radius: 6px; font-size: 13px;
+  }
+  .card .row { display: flex; gap: 8px; margin-top: 16px; }
+  .card .row button { flex: 1; padding: 8px; border: 0; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  .card .ok { background: #4f7cff; color: #fff; }
+  .card .no { background: #eee; color: #333; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🧳 行李标注 · AI预标 + 手动画框</h1>
+  <span class="spacer"></span>
+  <button class="primary" id="btnUpload">上传行李图片</button>
+  <button class="ghost" id="btnAuto">AI自动标注当前图</button>
+  <button class="ghost" id="btnLora">用训练后LoRA识别</button>
+  <button class="ghost" id="btnImport">导入草稿</button>
+  <button id="btnSave">保存</button>
+  <button id="btnExport">导出训练数据</button>
+  <input type="file" id="fileInput" accept="image/*" style="display:none" />
+</header>
+
+<main>
+  <div class="left">
+    <div class="title">图集（点击切换）</div>
+    <div id="thumbs"></div>
+  </div>
+
+  <div class="center">
+    <div class="canvas-wrap">
+      <canvas id="cv"></canvas>
+    </div>
+    <div class="hint">
+      上传图片后 AI 会先自动框一遍 → 你再微调：拖动框体可移动、拖四角/四边手柄可缩放、点框改名、× 删除、空白处拖拽新增。
+    </div>
+  </div>
+
+  <div class="right">
+    <div class="title">本图标注（<span id="boxCount">0</span>）</div>
+    <div id="list"></div>
+    <div class="title" style="margin-top:14px;">🤖 训练后 LoRA 识别</div>
+    <div id="loraBox" class="empty">点「用训练后LoRA识别」查看模型判断（带/没带 + 位置）</div>
+  </div>
+</main>
+
+<div id="toast"></div>
+
+<div id="modal">
+  <div class="card">
+    <h3 id="modalTitle">标注物品名称</h3>
+    <label>从常用物品选择（23 项）</label>
+    <select id="itemSelect"></select>
+    <label>或手动输入名称</label>
+    <input id="customName" placeholder="例如：太阳镜 / 充电线" />
+    <div class="row">
+      <button class="no" id="mNo">取消</button>
+      <button class="ok" id="mOk">确定</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = "";
+let CANON = [];
+// 8 个手柄：四角 + 四边中点（归一化相对框的坐标）
+const HANDLES = [[0,0],[0.5,0],[1,0],[1,0.5],[1,1],[0.5,1],[0,1],[0,0.5]];
+const HSIZE = 8; // 手柄命中半径(px)
+
+const state = {
+  images: [],          // [{name, source}]
+  current: null,
+  boxes: {},           // { imgName: [ {id, name, bbox:[x1,y1,x2,y2](归一化), color} ] }
+  selectedId: null,
+  natural: {w:1, h:1},
+  scale: 1,
+  drawing: null,       // {sx, sy, cx, cy}
+  mode: null,          // null | 'move' | 'resize' | 'draw'
+  resizeHandle: null,  // {hx, hy}
+  moveStart: null,     // {norm:{x,y}, box:[...]}
+};
+
+const cv = document.getElementById("cv");
+const ctx = cv.getContext("2d");
+
+// ---------- 工具 ----------
+function randColor(){
+  const h = Math.floor(Math.random()*360);
+  return `hsl(${h}, 70%, 50%)`;
+}
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+function toast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast._t); toast._t = setTimeout(()=>t.classList.remove("show"), 1800);
+}
+function normBoxFromCanvas(sx, sy, cx, cy){
+  const cw = cv.width, ch = cv.height;
+  return [Math.min(sx,cx)/cw, Math.min(sy,cy)/ch, Math.max(sx,cx)/cw, Math.max(sy,cy)/ch];
+}
+function getMouse(e){
+  const r = cv.getBoundingClientRect();
+  return { x: (e.clientX - r.left) * (cv.width / r.width),
+           y: (e.clientY - r.top)  * (cv.height / r.height) };
+}
+function curBox(){ return (state.boxes[state.current]||[]).find(b=>b.id===state.selectedId); }
+function hitTest(px, py){
+  const boxes = state.boxes[state.current] || [];
+  for (let i = boxes.length-1; i>=0; i--){
+    const b = boxes[i].bbox;
+    const x = b[0]*cv.width, y = b[1]*cv.height;
+    const w = (b[2]-b[0])*cv.width, h = (b[3]-b[1])*cv.height;
+    if (px>=x && px<=x+w && py>=y && py<=y+h) return boxes[i].id;
+  }
+  return null;
+}
+function hitHandle(px, py){
+  const b = curBox();
+  if (!b) return null;
+  for (const [hx, hy] of HANDLES){
+    const hxp = (b.bbox[0] + hx*(b.bbox[2]-b.bbox[0])) * cv.width;
+    const hyp = (b.bbox[1] + hy*(b.bbox[3]-b.bbox[1])) * cv.height;
+    if (Math.abs(px-hxp) <= HSIZE && Math.abs(py-hyp) <= HSIZE) return {hx, hy};
+  }
+  return null;
+}
+function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
+
+// ---------- 渲染 ----------
+function drawCanvas(){
+  ctx.clearRect(0,0,cv.width,cv.height);
+  if (state.current){
+    const img = new Image();
+    img.src = `${API}/api/image/${encodeURIComponent(state.current)}?t=${Date.now()}`;
+    img.onload = () => { ctx.drawImage(img, 0, 0, cv.width, cv.height); drawBoxes(); };
+  }
+}
+function drawBoxes(){
+  const boxes = state.boxes[state.current] || [];
+  for (const b of boxes){
+    const x = b.bbox[0]*cv.width, y = b.bbox[1]*cv.height;
+    const w = (b.bbox[2]-b.bbox[0])*cv.width, h = (b.bbox[3]-b.bbox[1])*cv.height;
+    const sel = (b.id === state.selectedId);
+    ctx.lineWidth = sel ? 4 : 2.5;
+    ctx.strokeStyle = b.color;
+    ctx.setLineDash(sel ? [8,4] : []);
+    ctx.strokeRect(x, y, w, h);
+    ctx.setLineDash([]);
+    ctx.font = "14px 'Microsoft YaHei', sans-serif";
+    const tw = ctx.measureText(b.name).width + 12;
+    let ly = y - 20; if (ly < 0) ly = y + 2;
+    ctx.fillStyle = b.color; ctx.fillRect(x, ly, tw, 18);
+    ctx.fillStyle = "#fff"; ctx.fillText(b.name, x + 6, ly + 13);
+    // 选中框画 8 个手柄
+    if (sel){
+      ctx.fillStyle = "#fff"; ctx.strokeStyle = "#4f7cff"; ctx.lineWidth = 2;
+      for (const [hx, hy] of HANDLES){
+        const hxp = (b.bbox[0] + hx*(b.bbox[2]-b.bbox[0])) * cv.width;
+        const hyp = (b.bbox[1] + hy*(b.bbox[3]-b.bbox[1])) * cv.height;
+        ctx.fillRect(hxp-HSIZE/2, hyp-HSIZE/2, HSIZE, HSIZE);
+        ctx.strokeRect(hxp-HSIZE/2, hyp-HSIZE/2, HSIZE, HSIZE);
+      }
+    }
+  }
+  if (state.drawing){
+    const {sx,sy,cx,cy} = state.drawing;
+    ctx.strokeStyle = "#4f7cff"; ctx.lineWidth = 2; ctx.setLineDash([6,4]);
+    ctx.strokeRect(Math.min(sx,cx), Math.min(sy,cy), Math.abs(cx-sx), Math.abs(cy-sy));
+    ctx.setLineDash([]);
+  }
+}
+
+// ---------- 右侧列表 ----------
+function renderList(){
+  const box = state.boxes[state.current] || [];
+  document.getElementById("boxCount").textContent = box.length;
+  const list = document.getElementById("list");
+  list.innerHTML = "";
+  if (!box.length){ list.innerHTML = '<div class="empty">还没有框，去图片上拖一个吧～</div>'; return; }
+  for (const b of box){
+    const row = document.createElement("div");
+    row.className = "item" + (b.id===state.selectedId ? " sel" : "");
+    row.innerHTML = `<span class="sw" style="background:${b.color}"></span>
+      <span class="nm">${b.name}</span>
+      <span class="ren">改</span><span class="del">×</span>`;
+    row.querySelector(".nm").onclick = ()=> selectBox(b.id);
+    row.querySelector(".sw").onclick = ()=> selectBox(b.id);
+    row.querySelector(".ren").onclick = (e)=>{ e.stopPropagation(); openModal(b.id); };
+    row.querySelector(".del").onclick = (e)=>{ e.stopPropagation(); delBox(b.id); };
+    list.appendChild(row);
+  }
+}
+function renderThumbs(){
+  const el = document.getElementById("thumbs");
+  el.innerHTML = "";
+  state.images.forEach(m=>{
+    const d = document.createElement("div");
+    d.className = "thumb" + (m.name===state.current ? " active" : "");
+    const cnt = (state.boxes[m.name]||[]).length;
+    const tag = m.source==="upload" ? '<span class="src">上传</span>' : '';
+    d.innerHTML = `${tag}<span>${m.name.replace(/\.jpg$/,"")}</span>` +
+                  (cnt ? `<span class="cnt">${cnt}</span>` : "");
+    d.onclick = ()=> selectImage(m.name);
+    el.appendChild(d);
+  });
+}
+
+// ---------- 交互 ----------
+function selectImage(name){
+  state.current = name;
+  state.selectedId = null;
+  state.mode = null;
+  const img = new Image();
+  img.onload = ()=>{
+    state.natural = {w: img.naturalWidth, h: img.naturalHeight};
+    const maxW = Math.min(cv.parentElement.clientWidth - 28, 900);
+    const dispW = Math.min(maxW, img.naturalWidth);
+    state.scale = dispW / img.naturalWidth;
+    cv.width = dispW;
+    cv.height = dispW * img.naturalHeight / img.naturalWidth;
+    drawCanvas();
+  };
+  img.src = `${API}/api/image/${encodeURIComponent(name)}?t=${Date.now()}`;
+  renderList(); renderThumbs();
+}
+function selectBox(id){ state.selectedId = id; state.mode = null; drawCanvas(); renderList(); }
+function delBox(id){
+  state.boxes[state.current] = (state.boxes[state.current]||[]).filter(b=>b.id!==id);
+  if (state.selectedId===id) state.selectedId = null;
+  drawCanvas(); renderList(); renderThumbs(); scheduleSave();
+}
+function addBox(bbox){
+  const b = { id: uid(), name: "", bbox, color: randColor() };
+  state.boxes[state.current] = state.boxes[state.current] || [];
+  state.boxes[state.current].push(b);
+  openModal(b.id);
+}
+function setBoxesFromDraft(arr, size){
+  const W = size?.[0] || 1, H = size?.[1] || 1;
+  state.boxes[state.current] = (arr||[]).filter(b=>b.bbox_px && b.name).map(b=>({
+    id: uid(), name: b.name, color: randColor(),
+    bbox: [b.bbox_px[0]/W, b.bbox_px[1]/H, b.bbox_px[2]/W, b.bbox_px[3]/H]
+  }));
+}
+
+cv.addEventListener("mousedown", (e)=>{
+  const m = getMouse(e);
+  // 1) 选中框的手柄 → 缩放
+  if (state.selectedId){
+    const hh = hitHandle(m.x, m.y);
+    if (hh){ state.mode = "resize"; state.resizeHandle = hh; return; }
+  }
+  // 2) 命中已有框
+  const hit = hitTest(m.x, m.y);
+  if (hit){
+    if (hit !== state.selectedId) selectBox(hit);
+    const b = curBox();
+    state.mode = "move";
+    state.moveStart = { norm: {x: m.x/cv.width, y: m.y/cv.height}, box: b.bbox.slice() };
+    return;
+  }
+  // 3) 空白 → 画新框
+  state.selectedId = null;
+  state.mode = "draw";
+  state.drawing = { sx: m.x, sy: m.y, cx: m.x, cy: m.y };
+  drawCanvas();
+});
+cv.addEventListener("mousemove", (e)=>{
+  if (!state.mode) return;
+  const m = getMouse(e);
+  if (state.mode === "draw"){
+    state.drawing.cx = m.x; state.drawing.cy = m.y; drawCanvas();
+  } else if (state.mode === "move"){
+    const b = curBox(); if (!b) return;
+    let dx = m.x/cv.width - state.moveStart.norm.x;
+    let dy = m.y/cv.height - state.moveStart.norm.y;
+    const s = state.moveStart.box;
+    if (s[0]+dx < 0) dx = -s[0];
+    if (s[2]+dx > 1) dx = 1 - s[2];
+    if (s[1]+dy < 0) dy = -s[1];
+    if (s[3]+dy > 1) dy = 1 - s[3];
+    b.bbox = [s[0]+dx, s[1]+dy, s[2]+dx, s[3]+dy];
+    drawCanvas();
+  } else if (state.mode === "resize"){
+    const b = curBox(); if (!b) return;
+    const bb = b.bbox.slice();
+    const mx = clamp(m.x/cv.width, 0, 1), my = clamp(m.y/cv.height, 0, 1);
+    const {hx, hy} = state.resizeHandle;
+    if (hx === 0) bb[0] = Math.min(mx, bb[2]-0.02);
+    if (hx === 1) bb[2] = Math.max(mx, bb[0]+0.02);
+    if (hy === 0) bb[1] = Math.min(my, bb[3]-0.02);
+    if (hy === 1) bb[3] = Math.max(my, bb[1]+0.02);
+    b.bbox = bb;
+    drawCanvas();
+  }
+});
+window.addEventListener("mouseup", (e)=>{
+  if (state.mode === "draw" && state.drawing){
+    const {sx,sy,cx,cy} = state.drawing;
+    state.drawing = null;
+    if (Math.abs(cx-sx) > 6 && Math.abs(cy-sy) > 6){
+      addBox(normBoxFromCanvas(sx, sy, cx, cy));
+    } else {
+      drawCanvas();
+    }
+  } else if (state.mode === "move" || state.mode === "resize"){
+    state.mode = null; state.resizeHandle = null; state.moveStart = null;
+    scheduleSave();
+  }
+  state.mode = null;
+});
+
+// 命名弹窗
+let modalTargetId = null;
+function openModal(editId){
+  modalTargetId = editId;
+  const boxes = state.boxes[state.current] || [];
+  const target = boxes.find(b=>b.id===editId);
+  document.getElementById("modalTitle").textContent =
+    (editId && target && target.name) ? "修改物品名称" : "标注物品名称";
+  document.getElementById("customName").value =
+    (target && target.name && !CANON.includes(target.name)) ? target.name : "";
+  document.getElementById("itemSelect").value =
+    (target && CANON.includes(target.name)) ? target.name : CANON[0];
+  document.getElementById("modal").classList.add("show");
+  document.getElementById("customName").focus();
+}
+function closeModal(){ document.getElementById("modal").classList.remove("show"); modalTargetId = null; }
+document.getElementById("mNo").onclick = closeModal;
+document.getElementById("mOk").onclick = ()=>{
+  const sel = document.getElementById("itemSelect").value;
+  const cus = document.getElementById("customName").value.trim();
+  const name = cus || sel;
+  if (!name){ toast("请选择或输入名称"); return; }
+  const boxes = state.boxes[state.current] || [];
+  const t = boxes.find(b=>b.id===modalTargetId);
+  if (t){ t.name = name; }
+  closeModal(); drawCanvas(); renderList(); renderThumbs(); scheduleSave();
+};
+document.getElementById("modal").addEventListener("click", (e)=>{ if (e.target.id==="modal") closeModal(); });
+
+// ---------- 上传 + AI 自动标注 ----------
+document.getElementById("btnUpload").onclick = ()=> document.getElementById("fileInput").click();
+document.getElementById("fileInput").onchange = (e)=>{
+  const f = e.target.files[0];
+  if (!f) return;
+  const fd = new FormData(); fd.append("file", f);
+  toast("上传并 AI 标注中…");
+  document.getElementById("btnUpload").disabled = true;
+  fetch(`${API}/api/upload`, {method:"POST", body: fd}).then(r=>r.json()).then(d=>{
+    if (d.error){ toast("上传失败：" + d.error); return; }
+    if (!state.images.find(m=>m.name===d.name))
+      state.images.push({name: d.name, source: d.source});
+    setBoxesFromDraft(d.boxes, d.size);
+    selectImage(d.name);
+    renderThumbs(); scheduleSave();
+    toast(`✅ AI 已自动标注 ${d.boxes.length} 个框，请检查微调`);
+  }).catch(()=> toast("上传/标注失败")).finally(()=>{
+    document.getElementById("btnUpload").disabled = false;
+    e.target.value = "";
+  });
+};
+document.getElementById("btnAuto").onclick = ()=>{
+  if (!state.current){ toast("请先选一张图"); return; }
+  if (!confirm("用 GroundingDINO 重新自动标注当前图（会覆盖已画的框）？")) return;
+  fetch(`${API}/api/autodetect/${encodeURIComponent(state.current)}`).then(r=>r.json()).then(d=>{
+    setBoxesFromDraft(d.boxes, d.size);
+    drawCanvas(); renderList(); renderThumbs(); scheduleSave();
+    toast(`✅ AI 重新标注 ${d.boxes.length} 个框`);
+  }).catch(()=> toast("自动标注失败"));
+};
+
+// ---------- LoRA 识别（混合模式：用训练后模型判断带/没带 + 位置）----------
+document.getElementById("btnLora").onclick = ()=>{
+  if (!state.current){ toast("请先选一张图"); return; }
+  const btn = document.getElementById("btnLora");
+  btn.disabled = true;
+  const box = document.getElementById("loraBox");
+  box.className = "empty";
+  box.textContent = "LoRA 识别中（首次约 10-30s 加载模型，请稍候）…";
+  fetch(`${API}/api/lora_recognize/${encodeURIComponent(state.current)}`, {method:"POST"})
+    .then(r=>r.json()).then(d=>{ renderLora(d); if (d.note) toast(d.note); })
+    .catch(()=> toast("LoRA 识别失败（显存不足？重启服务后再试）"))
+    .finally(()=> btn.disabled = false);
+};
+function renderLora(d){
+  const box = document.getElementById("loraBox");
+  const items = d.items || [];
+  if (!items.length){ box.className = "empty"; box.textContent = "（未解析出结构化结果）"; return; }
+  // 以模型输出为准建索引，再按 22 项清单对齐：漏判项显示「未判断」
+  const byName = {};
+  for (const it of items){ if (it && it.name) byName[it.name] = it; }
+  const order = CANON.length ? CANON.slice() : items.map(it=>it.name);
+  // 清单外的（模型多吐的）追加到末尾，避免丢失
+  for (const it of items){ if (it && it.name && !order.includes(it.name)) order.push(it.name); }
+
+  const rows = [];
+  let nYes = 0, nNo = 0, nUnknown = 0;
+  for (const name of order){
+    const it = byName[name];
+    let color, mark, loc, cls;
+    if (!it){                       // 清单里有、模型没提 → 未判断
+      color = '#cfcfcf'; mark = '❔'; loc = '未判断'; cls = 'unknown';
+      nUnknown++;
+    } else if (it.present){         // 判为带了
+      color = '#2e9e5b'; mark = '✅'; loc = it.location || ''; cls = 'yes';
+      nYes++;
+    } else {                        // 判为没带
+      color = '#e05555'; mark = '❌'; loc = it.location || ''; cls = 'no';
+      nNo++;
+    }
+    rows.push(`<div class="item lora-${cls}">` +
+      `<span class="sw" style="background:${color}"></span>` +
+      `<span class="nm">${mark} ${name}</span>` +
+      `<span class="ren">${loc}</span></div>`);
+  }
+  box.className = "";
+  box.innerHTML =
+    `<div class="lora-sum">LoRA 判断：<b style="color:#2e9e5b">带了 ${nYes}</b> · ` +
+    `<b style="color:#e05555">没带 ${nNo}</b> · ` +
+    `<b style="color:#999">未判断 ${nUnknown}</b></div>` + rows.join("");
+}
+
+// ---------- 存取 ----------
+let saveTimer = null;
+function scheduleSave(){ clearTimeout(saveTimer); saveTimer = setTimeout(saveAll, 600); }
+function saveAll(){
+  fetch(`${API}/api/annotations`, {
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ annotations: state.boxes })
+  }).then(r=>r.json()).then(()=> toast("已自动保存")).catch(()=> toast("保存失败"));
+}
+document.getElementById("btnSave").onclick = ()=>{
+  fetch(`${API}/api/annotations`, {
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ annotations: state.boxes })
+  }).then(r=>r.json()).then(()=> toast("✅ 已保存")).catch(()=> toast("保存失败"));
+};
+document.getElementById("btnExport").onclick = ()=>{
+  fetch(`${API}/api/export`, {method:"POST"}).then(r=>r.json()).then(d=>{
+    if (d.ok) toast(`✅ 已导出 ${d.images} 张 / ${d.present} 个标注`);
+    else toast("导出失败：" + (d.detail||""));
+  }).catch(()=> toast("导出失败"));
+};
+document.getElementById("btnImport").onclick = ()=>{
+  if (!confirm("将 GroundingDINO 自动标注草稿导入为可手改的框（覆盖当前图已画的框）？")) return;
+  fetch(`${API}/api/autodraft`).then(r=>r.json()).then(d=>{
+    let n = 0;
+    for (const [img, arr] of Object.entries(d.draft||{})){
+      const W = d.sizes?.[img]?.[0] || 1, H = d.sizes?.[img]?.[1] || 1;
+      state.boxes[img] = (arr||[]).filter(b=>b.bbox_px && b.name).map(b=>({
+        id: uid(), name: b.name, color: randColor(),
+        bbox: [b.bbox_px[0]/W, b.bbox_px[1]/H, b.bbox_px[2]/W, b.bbox_px[3]/H]
+      }));
+      n += state.boxes[img].length;
+    }
+    drawCanvas(); renderList(); renderThumbs(); scheduleSave();
+    toast(`已导入 ${n} 个框（来自自动草稿）`);
+  }).catch(()=> toast("导入失败"));
+};
+
+// ---------- 启动 ----------
+function initSelect(){
+  const sel = document.getElementById("itemSelect");
+  sel.innerHTML = CANON.map(c=>`<option>${c}</option>`).join("");
+}
+function boot(){
+  fetch(`${API}/api/canon`).then(r=>r.json()).then(d=>{ CANON = d.canon || []; }).catch(()=>{})
+  .then(()=>{
+    initSelect();
+    fetch(`${API}/api/images`).then(r=>r.json()).then(d=>{
+      state.images = d.images;
+      return fetch(`${API}/api/annotations`).then(r=>r.json());
+    }).then(d=>{
+      state.boxes = d.annotations || {};
+      if (state.images.length) selectImage(state.images[0].name);
+      renderThumbs();
+    }).catch(()=> toast("加载失败，请确认服务已启动"));
+  });
+}
+boot();
+</script>
+</body>
+</html>

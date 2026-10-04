@@ -1,0 +1,18 @@
+# luggage-agent 依赖清单（Python 3.10，CUDA 12.x）
+# 安装前确认已装好 PyTorch cu128 版；其余用 pip 安装即可。
+# 环境：本机已有 `lora` 环境（D:\10604\ANACONDA\envs\lora，装好 torch 2.7.1+cu128 等），直接 `conda activate lora` 即可。
+# 如需独立环境可新建：conda create -n luggage python=3.10 && conda activate luggage
+
+# 基础 ML / VLM
+transformers>=4.45
+peft>=0.13
+bitsandbytes>=0.43
+trl>=0.12
+qwen-vl-utils
+datasets
+
+# 演示界面（可选，本地跑推理 demo 用）
+gradio
+
+# 注意：torch 请用与 CUDA 匹配的版本，例如：
+# pip install torch==2.7.1+cu128 --index-url https://download.pytorch.org/whl/cu128
