@@ -30,7 +30,7 @@ TRAIN = DATA / "labeled" / "train.jsonl"
 MANUAL = DATA / "labeled" / "manual_annotations.json"
 OVERLAYS = DATA / "labeled" / "overlays"
 
-VERSION = "v2-20261004"
+VERSION = sys.argv[1] if len(sys.argv) > 1 else "v2-20261004"
 OUT = DATA / "archive" / VERSION
 
 STAMP = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

@@ -34,33 +34,53 @@ pip install -r requirements.txt
 
 ### 2. 下载基座模型（约 7.7GB）
 
+`vlm/` 已被 .gitignore 排除，**每人各自下一份**。先装下载工具：
+
+```bat
+pip install -U "huggingface_hub[cli]"
+```
+
+再下载：
+
 ```bat
 set HF_ENDPOINT=https://hf-mirror.com
 set HF_HUB_DISABLE_XET=1
 hf download Qwen/Qwen2.5-VL-3B-Instruct --local-dir vlm/qwen2.5-vl-3b-instruct
 ```
 
-### 3. 训练
+### 3. 还原训练图片（**必做**，跳过会报「图片找不到」）
+
+`data/raw/` 因体积原因没进仓库，但 `train.jsonl` 的图片路径指向它。用自带脚本从归档还原：
 
 ```bat
-python train.py --data data/labeled/train.jsonl ^
+python _scripts/restore_data.py
+```
+
+会把 `data/archive/v2-20261004/images/` 的 11 张图复制到 `data/raw/reference_wuzi/`。
+
+### 4. 训练
+
+```bat
+python train.py --data data/archive/v2-20261004/train.jsonl ^
     --model vlm/qwen2.5-vl-3b-instruct ^
     --out output/lora-adapter --epochs 8 --lr 1e-4
 ```
 
-### 4. 推理
+> 用归档里的 `train.jsonl`。`data/labeled/train.jsonl` 是本地工作副本，没进仓库。
+
+### 5. 推理
 
 ```bat
 python infer.py --image 你的行李照.jpg --adapter output/lora-adapter
 ```
 
-### 5. 验证指标
+### 6. 验证指标
 
 ```bat
 python validate.py --adapter output/lora-adapter --taxonomy taxonomy.json
 ```
 
-### 6. 标注平台（扩数据用）
+### 7. 标注平台（扩数据用）
 
 双击 `anno-tool\启动标注平台.bat`，上传照片 → AI 预标 → 手改 → 导出（自动归类）。
 
@@ -123,11 +143,14 @@ python validate.py --adapter output/lora-adapter --taxonomy taxonomy.json
 
 ## 文档
 
+仓库内这份 `README.md` 是唯一对外说明，**照着「快速开始」走就能跑通**。
+
+以下几份是**个人向文档，没有放进仓库**（存在本地 `个人留存_继续用/`），需要的话找作者要：
+
 - `本机部署步骤清单.md` — 从零到跑通的完整步骤 + 进度
-- `标注方案_PPT说明.md` — 标注方案说明
-- `清单v2对照分析.md` — 清单 v2 相对旧版的新增/合并/待定项
-- `同步文档_同学版.md` — 给组员的说明
 - `GitHub共享指南.md` — 推远端与协作流程
+- `清单v2对照分析.md` — 清单 v2 相对旧版的新增 / 合并 / 待定项
+- `行李提醒Agent_汇报PPT.pptx` — 汇报用演示稿（含讲稿备注）
 
 ---
 
