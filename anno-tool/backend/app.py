@@ -653,5 +653,38 @@ async def _no_cache_frontend(request, call_next):
 app.mount("/", StaticFiles(directory=str(WEB_DIR), html=True), name="web")
 
 
+# ---------------- 启动 ----------------
+
+def _open_browser_when_ready(url: str, port: int = 8004, timeout: float = 30.0) -> None:
+    """等端口**真正可连接**后再开浏览器。
+
+    为什么不用 bat 里的延时：
+      启动平台后端起服务要 3~4 秒（加载 normalize/anno 模块 + 挂载静态目录）。
+      早先 bat 用 `ping -n 3` 之类"猜"一个等待时间（约 2 秒）就去开浏览器，
+      机器慢的时候浏览器会**先于服务打开** → 显示「无法访问此网站」，
+      用户就以为平台启动失败了。实际服务几秒后才起来。
+      这里改成 socket 探活，端口一通才开，不再依赖任何时间猜测。
+    """
+    import socket
+    import threading
+    import webbrowser
+
+    def _worker() -> None:
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                with socket.create_connection(("127.0.0.1", port), timeout=0.5):
+                    break          # 端口可连接 = 服务已就绪
+            except OSError:
+                time.sleep(0.2)
+        webbrowser.open(url)
+
+    threading.Thread(target=_worker, daemon=True).start()
+
+
 if __name__ == "__main__":
+    # 由 启动标注平台.bat 设置该环境变量；直接跑脚本/被测试调用时不会弹浏览器
+    if os.environ.get("ANNO_OPEN_BROWSER") == "1":
+        _open_browser_when_ready("http://127.0.0.1:8004")
+
     uvicorn.run(app, host="127.0.0.1", port=8004, log_level="info")
