@@ -19,6 +19,7 @@ slide_set_notes_text silent fail」），所以 <Slide notes> 不会进 pptx。
 注意：**必须在页面定稿、引擎停止后运行**；引擎若再次编译会覆盖讲稿。
 """
 import argparse
+import os
 import re
 import shutil
 import sys
@@ -169,7 +170,16 @@ def main():
     with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as out:
         for i in items:
             out.writestr(i, payload[i.filename])
-    shutil.move(str(tmp), str(pptx_path))
+    # os.replace 原子覆盖，且不需要 unlink 旧文件
+    # （Windows 上 shutil.move 目标已存在时会先 unlink，删除被拦会抛 FileExistsError）
+    try:
+        os.replace(str(tmp), str(pptx_path))
+    except PermissionError:
+        # 目标被 PowerPoint / WPS / 预览面板打开时无法覆盖 → 另存副本，别丢结果
+        alt = pptx_path.with_name(pptx_path.stem + "_讲稿版" + pptx_path.suffix)
+        os.replace(str(tmp), str(alt))
+        print("⚠️ 目标文件被占用，已改写到：" + alt.name)
+        print("   关闭占用程序后重跑即可覆盖原文件。")
 
     print(f"✅ 已注入讲稿：{written} / {len(pages)} 页")
     if skipped:
