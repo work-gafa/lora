@@ -1,0 +1,40 @@
+{
+  "_comment": "每张图属于哪个场景（travel=旅行 / school=上学回家）。可在平台上修改。",
+  "scenarios": {
+    "travel": "出门旅行 / 旅游",
+    "school": "上学 / 回家"
+  },
+  "map": {
+    "小红书参考10.jpg": "travel",
+    "小红书参考12.jpg": "travel",
+    "小红书参考13.jpg": "travel",
+    "小红书参考14.jpg": "travel",
+    "小红书参考15.jpg": "travel",
+    "小红书参考5.jpg": "travel",
+    "小红书参考6.jpg": "travel",
+    "小红书参考7.jpg": "travel",
+    "小红书参考8.jpg": "travel",
+    "小红书参考9.jpg": "travel",
+    "小红书补充1.jpg": "school",
+    "小红书补充10.jpg": "school",
+    "小红书补充11.jpg": "travel",
+    "小红书补充12.jpg": "travel",
+    "小红书补充13.jpg": "travel",
+    "小红书补充14.jpg": "school",
+    "小红书补充15.jpg": "school",
+    "小红书补充16.jpg": "school",
+    "小红书补充17.jpg": "school",
+    "小红书补充18.jpg": "school",
+    "小红书补充19.jpg": "school",
+    "小红书补充2.jpg": "travel",
+    "小红书补充3.jpg": "travel",
+    "小红书补充4.jpg": "travel",
+    "小红书补充5.jpg": "travel",
+    "小红书补充6.jpg": "travel",
+    "小红书补充7.jpg": "school",
+    "小红书补充8.jpg": "school",
+    "小红书补充9.jpg": "school",
+    "行李模拟照片.jpg": "travel",
+    "小红书参考4.jpg": "travel"
+  }
+}

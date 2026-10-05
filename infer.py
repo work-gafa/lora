@@ -63,14 +63,15 @@ def load_model(model_dir, adapter_dir=None):
     return model, processor
 
 
-def infer_one(image_path, items, model, processor, max_new_tokens=768):
+def infer_one(image_path, items, model, processor, max_new_tokens=768,
+              scenario: str = "travel"):
     image = Image.open(image_path).convert("RGB")
     messages = [
         {
             "role": "user",
             "content": [
                 {"type": "image", "image": image},
-                {"type": "text", "text": build_prompt(items)},
+                {"type": "text", "text": build_prompt(items, scenario)},
             ],
         }
     ]
@@ -158,12 +159,15 @@ def try_parse_json(raw, canon=None):
                 c = normalize_name(it.get("name"))
                 if c is None or c not in canon:
                     continue
+                # 新格式只输出「看到的」物品（没有 present 字段）→ 视为 present=True；
+                # 旧格式会带 present 字段 → 按它自己写的值走（向后兼容）。
+                present = bool(it["present"]) if "present" in it else True
                 if c not in merged:
                     merged[c] = {"name": c,
-                                 "present": bool(it.get("present")),
+                                 "present": present,
                                  "location": it.get("location")}
                 else:
-                    merged[c]["present"] = merged[c]["present"] or bool(it.get("present"))
+                    merged[c]["present"] = merged[c]["present"] or present
                     if not merged[c]["location"] and it.get("location"):
                         merged[c]["location"] = it["location"]
             # 按清单顺序补齐缺席项为 present=false
@@ -176,18 +180,51 @@ def try_parse_json(raw, canon=None):
     return items
 
 
+def load_items(taxonomy_path: str, scenario: str = "travel") -> list[str]:
+    """读取清单，按场景过滤。兼容三种格式：
+
+    1) 新格式（项目根 taxonomy.json）：items 每项带 scenarios 数组
+       {"items": [{"name": ..., "scenarios": ["travel"]}, ...]}
+    2) 旧格式 A（demo/taxonomy.json）：{"scenarios": {"travel": {"items": [...]}}}
+    3) 旧格式 B（扁平无场景）：{"items": [{"name": ...}]} → 全部返回
+    """
+    with open(taxonomy_path, encoding="utf-8") as f:
+        tax = json.load(f)
+
+    # 旧格式 A：顶层 scenarios 是「场景 -> 清单」的字典
+    scenarios = tax.get("scenarios")
+    if isinstance(scenarios, dict) and scenarios:
+        first = next(iter(scenarios.values()))
+        if isinstance(first, dict) and "items" in first:
+            return scenarios.get(scenario, {}).get("items", [])
+
+    items = tax.get("items", [])
+    if not items:
+        return []
+
+    # 只要有任何一项带 scenarios 字段，就按场景过滤
+    if any("scenarios" in it for it in items):
+        picked = [
+            it["name"] for it in items
+            if scenario in (it.get("scenarios") or ["travel"])
+        ]
+        return picked
+
+    # 全部没有 scenarios 字段 → 视为通用清单，原样返回
+    return [it["name"] for it in items]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--image", required=True, help="单张图片路径，或含图片的文件夹")
     ap.add_argument("--scenario", default="travel")
-    ap.add_argument("--taxonomy", default="demo/taxonomy.json")
+    ap.add_argument("--taxonomy", default="taxonomy.json", help="清单文件，默认项目根 taxonomy.json")
     ap.add_argument("--model", default="vlm/qwen2.5-vl-3b-instruct")
     ap.add_argument("--adapter", default="output/lora-adapter")
+    ap.add_argument("--json", action="store_true", help="只输出纯 JSON，供程序调用（不打印调试信息）")
     args = ap.parse_args()
 
-    with open(args.taxonomy, encoding="utf-8") as f:
-        tax = json.load(f)
-    items = tax["scenarios"][args.scenario]["items"]
+    items = load_items(args.taxonomy, args.scenario)
     if not items:
         print(f"场景 {args.scenario} 暂无物品清单（自定义场景需后续填充）")
         return
@@ -197,27 +234,50 @@ def main():
     )
 
     images = collect_images(args.image)
-    print(f">> 共 {len(images)} 张待检测\n")
+    results = []
+    if not args.json:
+        print(f">> 共 {len(images)} 张待检测\n")
+
     for img in images:
-        print(f"===== {os.path.basename(img)} =====")
+        entry = {"image": os.path.basename(img), "path": img, "present": [], "missing": []}
+        if not args.json:
+            print(f"===== {entry['image']} =====")
         try:
-            raw = infer_one(img, items, model, processor)
+            raw = infer_one(img, items, model, processor, scenario=args.scenario)
         except Exception as e:
             print("  推理失败：", repr(e))
+            entry["error"] = repr(e)
+            results.append(entry)
             continue
-        print("模型原始输出：")
-        print(raw)
+
         parsed = try_parse_json(raw, canon=items)
         if parsed:
-            present = [it.get("name") for it in parsed if it.get("present")]
-            missing = [it.get("name") for it in parsed if not it.get("present")]
+            entry["present"] = [
+                {"name": it.get("name"), "location": it.get("location")}
+                for it in parsed if it.get("present")
+            ]
+            entry["missing"] = [it.get("name") for it in parsed if not it.get("present")]
+        else:
+            entry["error"] = "未能解析出结构化 JSON"
+            entry["raw"] = raw
+        results.append(entry)
+
+        if args.json:
+            continue
+
+        print("模型原始输出：")
+        print(raw)
+        if parsed:
             print("解析后结构化：")
             print(json.dumps({"items": parsed}, ensure_ascii=False, indent=2))
-            print(f"→ 已带({len(present)})：{'、'.join(present) or '无'}")
-            print(f"→ 未带({len(missing)})：{'、'.join(missing) or '无'}")
+            print(f"→ 已带({len(entry['present'])})：{'、'.join(p['name'] for p in entry['present']) or '无'}")
+            print(f"→ 未带({len(entry['missing'])})：{'、'.join(entry['missing']) or '无'}")
         else:
             print("（未能解析出结构化 JSON，见上方原始输出）")
         print()
+
+    if args.json:
+        print(json.dumps({"items": items, "results": results}, ensure_ascii=False))
 
 
 if __name__ == "__main__":

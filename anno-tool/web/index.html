@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>行李物品标注与识别平台</title>
+    <link rel="stylesheet" href="/vendor/element-plus/index.css" />
+    <style>
+      body {
+        margin: 0;
+        background: #f5f6f8;
+        font-family: system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      }
+      .app-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 56px;
+        padding: 0 24px;
+        background: #fff;
+        border-bottom: 1px solid #e6e8eb;
+        font-weight: 600;
+        font-size: 16px;
+      }
+      .app-header .sub {
+        font-size: 12px;
+        font-weight: 400;
+        color: #909399;
+      }
+      .app-main { padding: 18px 24px 32px; }
+      .stat-row { display: flex; gap: 14px; margin-bottom: 16px; flex-wrap: wrap; }
+      .stat-card {
+        flex: 1; min-width: 130px; background: #fff; border: 1px solid #ebeef5;
+        border-radius: 8px; padding: 14px 18px;
+      }
+      .stat-card .v { font-size: 24px; font-weight: 600; color: #0b3d5c; }
+      .stat-card .l { font-size: 12px; color: #909399; margin-top: 2px; }
+      /* 数据集卡片 */
+      .img-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+      .img-card {
+        background: #fff; border: 1px solid #ebeef5; border-radius: 8px; overflow: hidden;
+        cursor: pointer; transition: box-shadow .15s, border-color .15s;
+      }
+      .img-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,.10); border-color: #0f8b8b; }
+      .img-card.active { border-color: #0f8b8b; box-shadow: 0 0 0 2px rgba(15,139,139,.18); }
+      .img-card img { width: 100%; height: 150px; object-fit: cover; display: block; background: #fafafa; }
+      .img-card .meta { padding: 8px 10px; }
+      .img-card .nm { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .img-card .tags { margin-top: 6px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+      /* 标注画布 */
+      .canvas-wrap {
+        background: #fff; border: 1px solid #e6e8eb; border-radius: 8px;
+        padding: 12px; overflow: auto; display: flex; justify-content: center; min-height: 380px;
+      }
+      canvas { cursor: crosshair; display: block; }
+      /* 识别预览：只读视图，不要十字光标 */
+      .preview-wrap {
+        background: #fafbfc; border: 1px solid #e6e8eb; border-radius: 8px;
+        padding: 12px; overflow: auto; display: flex; justify-content: center;
+      }
+      .preview-wrap canvas { cursor: default; max-width: 100%; height: auto; }
+      .box-item {
+        display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+        border: 1px solid #ebeef5; border-radius: 6px; margin-bottom: 6px; background: #fff;
+      }
+      .box-item.sel { border-color: #0f8b8b; background: #f0fbfb; }
+      .swatch { width: 12px; height: 12px; border-radius: 3px; flex: none; cursor: pointer; }
+      /* 版本号：用来一眼确认浏览器加载的是不是最新的前端 */
+      .app-header .ver {
+        font-size: 11px; font-weight: 400; color: #fff; background: #0f8b8b;
+        padding: 1px 6px; border-radius: 8px; margin-left: 6px; vertical-align: middle;
+        opacity: .85;
+      }
+      .hint { font-size: 12px; color: #909399; line-height: 1.7; }
+      .tool-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+      .chip { margin: 2px; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script src="/vendor/vue.global.prod.js"></script>
+    <script src="/vendor/element-plus/index.full.min.js"></script>
+    <!-- ?v= 用来强制绕过浏览器缓存：改了 app.js 就把版本号 +1 -->
+    <script src="/app.js?v=2"></script>
+  </body>
+</html>

@@ -23,7 +23,15 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 
 
 def load_ground_truth(jsonl_path):
-    """读 train.jsonl，每行 answer 是 JSON 字符串 → 解析成 {name: present}。"""
+    """读 train.jsonl，每行 answer 是 JSON 字符串 → 解析成 {name: present}。
+
+    兼容两种 answer 格式：
+      - 新格式 {"items":[{name,location}]}：只列「看到的」，没有 present 字段 → 视为 True
+      - 旧格式 [{name,present,location}]：全量，按 present 字段走
+
+    ⚠️ 必须把 scenario 带出来：评估要按每张图的场景提问，否则会拿旅行清单
+    去问书桌图，结果全错。
+    """
     rows = []
     with open(jsonl_path, encoding="utf-8") as f:
         for line in f:
@@ -31,10 +39,18 @@ def load_ground_truth(jsonl_path):
             if not line:
                 continue
             r = json.loads(line)
+            raw_answer = json.loads(r["answer"])
+            if isinstance(raw_answer, dict):          # 新格式
+                answer_items = raw_answer.get("items", [])
+                default_present = True
+            else:                                     # 旧格式
+                answer_items = raw_answer
+                default_present = False
             gt_map = {}
-            for it in json.loads(r["answer"]):
-                gt_map[it["name"]] = bool(it["present"])
-            rows.append({"image": r["image"], "gt": gt_map})
+            for it in answer_items:
+                gt_map[it["name"]] = bool(it["present"]) if "present" in it else default_present
+            rows.append({"image": r["image"], "gt": gt_map,
+                         "scenario": r.get("scenario") or "travel"})
     return rows
 
 
@@ -58,14 +74,26 @@ def main():
 
     with open(args.taxonomy, encoding="utf-8") as f:
         tax = json.load(f)
-    # 兼容两种结构：根 taxonomy.json 用 items；旧 demo/taxonomy.json 用 scenarios
+    # 兼容两种结构：根 taxonomy.json 用 items（每项可带 scenarios）；旧 demo 用 scenarios
+    item_scen: dict[str, list[str]] = {}
     if "items" in tax:
         canon = [it["name"] if isinstance(it, dict) else it for it in tax["items"]]
+        for it in tax["items"]:
+            if isinstance(it, dict):
+                item_scen[it["name"]] = it.get("scenarios") or ["travel", "school"]
     else:
         canon = tax["scenarios"][args.scenario]["items"]
 
+    def items_for(scen: str) -> list[str]:
+        """该场景的清单项；taxonomy 没标场景时退回全量。"""
+        if not item_scen:
+            return canon
+        picked = [c for c in canon if scen in item_scen.get(c, ["travel", "school"])]
+        return picked or canon
+
     gt_rows = load_ground_truth(args.data)
-    print(f">> 待验证 {len(gt_rows)} 张，物品 {len(canon)} 类")
+    print(f">> 待验证 {len(gt_rows)} 张，清单 {len(canon)} 类"
+          f"（旅行 {len(items_for('travel'))} / 上学 {len(items_for('school'))}）")
 
     model, processor = load_model(
         args.model, args.adapter if os.path.exists(args.adapter) else None
@@ -75,25 +103,29 @@ def main():
     stat = {c: {"tp": 0, "fp": 0, "fn": 0, "tn": 0} for c in canon}
     noise = []          # 模型输出但不在 canon 里的名字（噪声）
     per_image = []
+    scen_stat: dict[str, dict[str, int]] = {}
 
     for r in gt_rows:
         ipath = os.path.join(args.data_root, r["image"])
         if not os.path.exists(ipath):
             print("  缺图跳过：", r["image"])
             continue
-        raw = infer_one(ipath, canon, model, processor)
-        pred = try_parse_json(raw, canon=canon)
+        # ★ 按这张图的场景提问，与训练/推理保持一致
+        scen = r.get("scenario") or args.scenario or "travel"
+        row_canon = items_for(scen)
+        raw = infer_one(ipath, row_canon, model, processor, scenario=scen)
+        pred = try_parse_json(raw, canon=row_canon)
         pred_map = {}
         if pred:
             for it in pred:
                 nm = it.get("name")
                 pv = bool(it.get("present"))
-                if nm in canon:
+                if nm in row_canon:
                     pred_map[nm] = pv
                 else:
                     noise.append(nm)
         img_stat = {}
-        for c in canon:
+        for c in row_canon:
             g = r["gt"].get(c, False)
             p = pred_map.get(c, False)
             if p and g:
@@ -104,7 +136,12 @@ def main():
                 stat[c]["fn"] += 1; img_stat[c] = "FN"
             else:
                 stat[c]["tn"] += 1; img_stat[c] = "TN"
-        per_image.append({"image": r["image"], "stat": img_stat})
+        per_image.append({"image": r["image"], "scenario": scen, "stat": img_stat})
+        # 分场景统计
+        b = scen_stat.setdefault(scen, {"tp": 0, "fp": 0, "fn": 0, "tn": 0})
+        for c in row_canon:
+            for k in b:
+                b[k] += 1 if img_stat[c] == k.upper() else 0
 
     # ---- 汇总 ----
     tot = {"tp": 0, "fp": 0, "fn": 0, "tn": 0}
@@ -122,6 +159,22 @@ def main():
     print(f"present 类 精确率 P : {prec * 100:.1f}%")
     print(f"present 类 召回率 R : {rec * 100:.1f}%")
     print(f"present 类 F1      : {f1 * 100:.1f}%")
+
+    # ---- 分场景 ----
+    print("\n-- 分场景 --")
+    scen_out = {}
+    for s_name, b in scen_stat.items():
+        m = sum(b.values())
+        a_ = (b["tp"] + b["tn"]) / max(1, m)
+        p_ = b["tp"] / max(1, b["tp"] + b["fp"])
+        r_ = b["tp"] / max(1, b["tp"] + b["fn"])
+        f_ = 2 * p_ * r_ / max(1e-9, p_ + r_)
+        cnt = len([x for x in per_image if x.get("scenario") == s_name])
+        print(f"  {s_name:<7} {cnt:>2} 张 | 准确率 {a_ * 100:5.1f}% "
+              f"P {p_ * 100:5.1f}% R {r_ * 100:5.1f}% F1 {f_ * 100:5.1f}%")
+        scen_out[s_name] = {"images": cnt, "accuracy": round(a_, 3),
+                            "precision": round(p_, 3), "recall": round(r_, 3),
+                            "f1": round(f_, 3), "totals": b}
 
     print("\n-- 每类（按 F1 升序，问题最大的在前）--")
     rows_out = []
@@ -147,6 +200,7 @@ def main():
     report = {
         "overall": {"accuracy": round(acc, 3), "precision": round(prec, 3),
                     "recall": round(rec, 3), "f1": round(f1, 3), "totals": tot},
+        "by_scenario": scen_out,
         "per_item": rows_out,
         "per_image": per_image,
         "noise": dict(Counter(noise)) if noise else {},

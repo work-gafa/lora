@@ -12,8 +12,14 @@ data/labeled/*.jsonl
 data/labeled/_backup/
 data/labeled/uploads/
 data/labeled/detections.json
+data/labeled/manual_annotations.prev.json
 # overlays 已复制进 data/archive/<版本>/overlays/，这里排除避免重复占 6MB
 data/labeled/overlays/
+
+# ===== 历史归档：只保留最新一版共享，旧版本地留档 =====
+# v2 的 train.jsonl 是旧答案格式（全量 present），拿它训练会教坏模型，
+# 且它那 11 张图已全部包含在 v3 里，属严格子集 → 不共享。
+data/archive/v2-20261004/
 
 # ===== 运行日志（本地调试用）=====
 *.log
@@ -29,6 +35,7 @@ __pycache__/
 
 # ===== 本地整理文件夹：只用于网盘备份 / 个人留存，不进 GitHub =====
 网盘备份/
+网盘备份_旧_*/
 个人留存_继续用/
 
 # ===== 临时 / 弃用文件 =====

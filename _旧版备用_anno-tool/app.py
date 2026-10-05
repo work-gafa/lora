@@ -183,7 +183,8 @@ def region_text(box, W, H):
     cx = (x1 + x2) / 2
     cy = (y1 + y2) / 2
     hx = "左" if cx < W / 3 else ("右" if cx > 2 * W / 3 else "中")
-    vy = "上" if cy < H / 3 else ("下" if cy > 2 * W / 3 else "中")
+    # 注意：纵向分界必须用 H，早先误写成 W，导致非正方形图片的上下判断全错
+    vy = "上" if cy < H / 3 else ("下" if cy > 2 * H / 3 else "中")
     if hx == "中" and vy == "中":
         return "画面中央"
     if hx == "中":
