@@ -26,7 +26,7 @@ ROOT_FILES = [
     "gdino_detect.py", "gdino_to_train.py",
     "download_model.py", "download_gdino.py",
     "validate_report.json",
-    "启动标注平台.bat",
+    "启动标注平台.bat", "推送更新到GitHub.bat",
 ]
 
 # ---------- 白名单：整目录复制 ----------
